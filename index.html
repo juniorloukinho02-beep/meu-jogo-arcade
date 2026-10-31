@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meu Jogo Arcade</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background-color: #121214;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        canvas {
+            background: #1e1e24;
+            display: block;
+        }
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 18px;
+            font-weight: bold;
+            pointer-events: none;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+        }
+        #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+        .btn {
+            background: #ff0055;
+            color: white;
+            border: none;
+            padding: 12px 28px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn:hover {
+            background: #ff2a75;
+            transform: scale(1.05);
+        }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="450"></canvas>
+        
+        <div class="ui-panel">
+            <div>Pontos: <span id="score">0</span></div>
+            <div>Recorde: <span id="highScore">0</span></div>
+        </div>
+
+        <div id="game-over-screen" class="hidden">
+            <h1 style="color: #ff0055;">FIM DE JOGO</h1>
+            <p>Pontuação Final: <span id="finalScore">0</span></p>
+            <button class="btn" onclick="resetGame()">Jogar Novamente</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('highScore');
+        const finalScoreEl = document.getElementById('finalScore');
+        const gameOverScreen = document.getElementById('game-over-screen');
+
+        let isGameOver = false;
+        let score = 0;
+        let highScore = localStorage.getItem('game_high_score') || 0;
+        highScoreEl.innerText = highScore;
+
+        // Jogador
+        const player = {
+            x: 50,
+            y: canvas.height / 2 - 20,
+            width: 30,
+            height: 30,
+            color: '#00ffcc',
+            speed: 6,
+            dy: 0
+        };
+
+        // Teclas pressionadas
+        const keys = { ArrowUp: false, ArrowDown: false, KeyW: false, KeyS: false };
+
+        // Obstáculos
+        let obstacles = [];
+        let obstacleTimer = 0;
+        let obstacleInterval = 70;
+        let gameSpeed = 5;
+
+        // Controles
+        window.addEventListener('keydown', (e) => {
+            if (e.code in keys) keys[e.code] = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            if (e.code in keys) keys[e.code] = false;
+        });
+
+        function spawnObstacle() {
+            const size = Math.random() * (50 - 20) + 20;
+            const yPos = Math.random() * (canvas.height - size);
+            obstacles.push({
+                x: canvas.width,
+                y: yPos,
+                width: size,
+                height: size,
+                color: '#ff0055'
+            });
+        }
+
+        function update() {
+            if (isGameOver) return;
+
+            // Movimento do jogador
+            if (keys.ArrowUp || keys.KeyW) player.y -= player.speed;
+            if (keys.ArrowDown || keys.KeyS) player.y += player.speed;
+
+            // Limites de tela
+            if (player.y < 0) player.y = 0;
+            if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
+
+            // Criar obstáculos
+            obstacleTimer++;
+            if (obstacleTimer > obstacleInterval) {
+                spawnObstacle();
+                obstacleTimer = 0;
+                // Aumentar dificuldade aos poucos
+                if (obstacleInterval > 25) obstacleInterval -= 0.5;
+                gameSpeed += 0.05;
+            }
+
+            // Atualizar obstáculos
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.x -= gameSpeed;
+
+                // Colisão (AABB)
+                if (
+                    player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y
+                ) {
+                    endGame();
+                }
+
+                // Remover fora de tela e somar ponto
+                if (obs.x + obs.width < 0) {
+                    obstacles.splice(i, 1);
+                    score += 10;
+                    scoreEl.innerText = score;
+                }
+            }
+        }
+
+        function draw() {
+            // Limpar tela
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Desenhar Jogador
+            ctx.fillStyle = player.color;
+            ctx.shadowColor = player.color;
+            ctx.shadowBlur = 10;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            ctx.shadowBlur = 0;
+
+            // Desenhar Obstáculos
+            obstacles.forEach(obs => {
+                ctx.fillStyle = obs.color;
+                ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
+            });
+        }
+
+        function loop() {
+            update();
+            draw();
+            if (!isGameOver) requestAnimationFrame(loop);
+        }
+
+        function endGame() {
+            isGameOver = true;
+            finalScoreEl.innerText = score;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('game_high_score', highScore);
+                highScoreEl.innerText = highScore;
+            }
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        function resetGame() {
+            player.y = canvas.height / 2 - 20;
+            obstacles = [];
+            score = 0;
+            gameSpeed = 5;
+            obstacleInterval = 70;
+            scoreEl.innerText = score;
+            isGameOver = false;
+            gameOverScreen.classList.add('hidden');
+            loop();
+        }
+
+        // Iniciar
+        loop();
+    </script>
+</body>
+</html>
